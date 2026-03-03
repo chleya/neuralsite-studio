@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
 import RoadViewer from './components/RoadViewer'
+import CollisionViewer from './components/CollisionViewer'
 import ParameterPanel from './components/ParameterPanel'
 import './index.css'
 
@@ -19,7 +20,11 @@ interface Coordinate {
   azimuth: number
 }
 
+type Tab = 'road' | 'collision'
+
 function App() {
+  const [activeTab, setActiveTab] = useState<Tab>('collision')
+  
   // 状态
   const [params, setParams] = useState<RouteParams>({
     route_id: 'demo',
@@ -51,7 +56,6 @@ function App() {
     setError(null)
     
     try {
-      // 尝试调用后端API
       const response = await axios.post('http://localhost:8000/api/v1/calculate/range', {
         route_id: params.route_id,
         start: startStation,
@@ -82,16 +86,13 @@ function App() {
     const coords: Coordinate[] = []
     
     for (let s = startStation; s <= endStation; s += interval) {
-      // 简化的坐标计算
       const x = 500000 + s * Math.cos(Math.PI / 4)
       const y = 3000000 + s * Math.sin(Math.PI / 4)
       
-      // 纵坡计算
       let z = 100
       if (s <= 500) {
-        z = 100 + s * 20 / 1000  // 上升段
+        z = 100 + s * 20 / 1000
       } else if (s <= 700) {
-        // 竖曲线段
         const ls = s - 500
         z = 110 + 20 * ls / 1000 - 35 * ls * ls / (200 * 1000)
       } else {
@@ -110,10 +111,11 @@ function App() {
     return coords
   }
 
-  // 页面加载时计算
   useEffect(() => {
-    calculateFromAPI()
-  }, [])
+    if (activeTab === 'road') {
+      calculateFromAPI()
+    }
+  }, [activeTab])
 
   return (
     <div className="app">
@@ -122,40 +124,82 @@ function App() {
         <p>公路参数化建模可视化系统</p>
       </header>
       
+      {/* Tab导航 */}
+      <div style={{
+        display: 'flex',
+        background: '#1a1a2e',
+        borderBottom: '1px solid #333'
+      }}>
+        <button
+          onClick={() => setActiveTab('collision')}
+          style={{
+            padding: '12px 24px',
+            background: activeTab === 'collision' ? '#667eea' : 'transparent',
+            border: 'none',
+            borderBottom: activeTab === 'collision' ? '2px solid #00ff88' : '2px solid transparent',
+            color: activeTab === 'collision' ? 'white' : '#888',
+            cursor: 'pointer',
+            fontSize: '14px'
+          }}
+        >
+          ⚡ 碰撞检测
+        </button>
+        <button
+          onClick={() => setActiveTab('road')}
+          style={{
+            padding: '12px 24px',
+            background: activeTab === 'road' ? '#667eea' : 'transparent',
+            border: 'none',
+            borderBottom: activeTab === 'road' ? '2px solid #00ff88' : '2px solid transparent',
+            color: activeTab === 'road' ? 'white' : '#888',
+            cursor: 'pointer',
+            fontSize: '14px'
+          }}
+        >
+          🛣️ 道路建模
+        </button>
+      </div>
+      
       <main className="main">
-        <aside className="sidebar">
-          <ParameterPanel 
-            params={params}
-            setParams={setParams}
-            startStation={startStation}
-            setStartStation={setStartStation}
-            endStation={endStation}
-            setEndStation={setEndStation}
-            interval={interval}
-            setInterval={setInterval}
-            onCalculate={calculateFromAPI}
-            loading={loading}
-          />
-        </aside>
-        
-        <section className="content">
-          {error && (
-            <div style={{
-              position: 'absolute',
-              top: 10,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              background: 'rgba(255, 100, 100, 0.9)',
-              padding: '8px 16px',
-              borderRadius: 6,
-              zIndex: 100,
-              fontSize: 12
-            }}>
-              {error} - 正在使用本地计算
-            </div>
-          )}
-          <RoadViewer coordinates={coordinates} loading={loading} />
-        </section>
+        {activeTab === 'collision' ? (
+          <CollisionViewer />
+        ) : (
+          <>
+            <aside className="sidebar">
+              <ParameterPanel 
+                params={params}
+                setParams={setParams}
+                startStation={startStation}
+                setStartStation={setStartStation}
+                endStation={endStation}
+                setEndStation={setEndStation}
+                interval={interval}
+                setInterval={setInterval}
+                onCalculate={calculateFromAPI}
+                loading={loading}
+              />
+            </aside>
+            
+            <section className="content">
+              {error && (
+                <div style={{
+                  position: 'absolute',
+                  top: 10,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  background: 'rgba(255, 100, 100, 0.9)',
+                  padding: '8px 16px',
+                  borderRadius: 6,
+                  zIndex: 100,
+                  fontSize: 12
+                }}>
+                  {error} - 正在使用本地计算
+                </div>
+              )}
+              <RoadViewer coordinates={coordinates} loading={loading} />
+            </section>
+          </>
+        )}
       </main>
     </div>
   )
