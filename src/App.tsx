@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import axios from 'axios'
 import RoadViewer from './components/RoadViewer'
 import ParameterPanel from './components/ParameterPanel'
-import './App.css'
+import './index.css'
 
 interface RouteParams {
   route_id: string
@@ -20,6 +20,7 @@ interface Coordinate {
 }
 
 function App() {
+  // 状态
   const [params, setParams] = useState<RouteParams>({
     route_id: 'demo',
     design_speed: 80,
@@ -37,49 +38,81 @@ function App() {
   
   const [coordinates, setCoordinates] = useState<Coordinate[]>([])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  
+  // 计算参数
   const [startStation, setStartStation] = useState(0)
   const [endStation, setEndStation] = useState(1000)
   const [interval, setInterval] = useState(50)
 
-  const calculate = async () => {
+  // 调用API计算坐标
+  const calculateFromAPI = async () => {
     setLoading(true)
+    setError(null)
+    
     try {
+      // 尝试调用后端API
       const response = await axios.post('http://localhost:8000/api/v1/calculate/range', {
         route_id: params.route_id,
         start: startStation,
         end: endStation,
         interval: interval
+      }, {
+        timeout: 10000
       })
-      setCoordinates(response.data.data)
-    } catch (error) {
-      console.error('计算失败:', error)
-      // 使用本地计算结果
+      
+      if (response.data && response.data.data) {
+        setCoordinates(response.data.data)
+        console.log('API调用成功:', response.data.data.length, '个点')
+      }
+    } catch (err: any) {
+      console.error('API调用失败:', err.message)
+      setError('后端未启动，使用本地计算')
+      
+      // 回退到本地计算
       const localCoords = generateLocalCoords()
       setCoordinates(localCoords)
     }
+    
     setLoading(false)
   }
 
   // 本地生成测试坐标
   const generateLocalCoords = (): Coordinate[] => {
     const coords: Coordinate[] = []
+    
     for (let s = startStation; s <= endStation; s += interval) {
+      // 简化的坐标计算
       const x = 500000 + s * Math.cos(Math.PI / 4)
       const y = 3000000 + s * Math.sin(Math.PI / 4)
-      const z = 100 + s / 50
+      
+      // 纵坡计算
+      let z = 100
+      if (s <= 500) {
+        z = 100 + s * 20 / 1000  // 上升段
+      } else if (s <= 700) {
+        // 竖曲线段
+        const ls = s - 500
+        z = 110 + 20 * ls / 1000 - 35 * ls * ls / (200 * 1000)
+      } else {
+        z = 110 - 15 * (s - 500) / 1000 - 35 * 200 * (s - 500) / (200 * 1000)
+      }
+      
       coords.push({
-        station: `K${s / 1000}+${(s % 1000).toString().padStart(3, '0')}`,
+        station: `K${Math.floor(s / 1000)}+${(s % 1000).toString().padStart(3, '0')}`,
         x: Math.round(x * 100) / 100,
         y: Math.round(y * 100) / 100,
         z: Math.round(z * 100) / 100,
         azimuth: 45
       })
     }
+    
     return coords
   }
 
+  // 页面加载时计算
   useEffect(() => {
-    calculate()
+    calculateFromAPI()
   }, [])
 
   return (
@@ -100,13 +133,28 @@ function App() {
             setEndStation={setEndStation}
             interval={interval}
             setInterval={setInterval}
-            onCalculate={calculate}
+            onCalculate={calculateFromAPI}
             loading={loading}
           />
         </aside>
         
         <section className="content">
-          <RoadViewer coordinates={coordinates} />
+          {error && (
+            <div style={{
+              position: 'absolute',
+              top: 10,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              background: 'rgba(255, 100, 100, 0.9)',
+              padding: '8px 16px',
+              borderRadius: 6,
+              zIndex: 100,
+              fontSize: 12
+            }}>
+              {error} - 正在使用本地计算
+            </div>
+          )}
+          <RoadViewer coordinates={coordinates} loading={loading} />
         </section>
       </main>
     </div>
